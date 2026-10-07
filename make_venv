@@ -1,0 +1,5 @@
+#!bash
+python3.10 -m venv .venv
+echo "*" >.venv/.gitignore
+source venv
+pip install -U pip pipdeptree

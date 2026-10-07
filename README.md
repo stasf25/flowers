@@ -1,137 +1,112 @@
-# 🔍 Мониторинг конкурентов - AI Ассистент
+## 🔍 CompetitorAI — мультимодальный анализатор конкурентов
 
-MVP приложение для анализа конкурентной среды с поддержкой мультимодальности (текст и изображения).
+AI-приложение для анализа и сопоставления конкурентов цветочного онлайн-рынка  — тексты, отзывы, скриншоты и парсинг сайтов, карточки букетов.
 
-![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)
-![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o-purple.svg)
+![Python](https://img.shields.io/badge/Python-3.10-blue.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-green.svg)
+![Docker](https://img.shields.io/badge/Docker-compose-blue.svg)
 
-## 📋 Описание
+---
 
-Приложение позволяет:
-- **Анализировать текст конкурентов** — получать структурированную аналитику с сильными/слабыми сторонами, уникальными предложениями и рекомендациями
-- **Анализировать изображения** — баннеры, скриншоты сайтов, упаковки товаров с оценкой визуального стиля
-- **Парсить сайты** — автоматически извлекать и анализировать контент по URL
-- **Хранить историю** — последние 10 запросов сохраняются для быстрого доступа
+## 📋 Ниша — онлайн-магазины цветов
+
+Что умеет приложение:
+- **Анализ текста** — досье конкурента: сильные/слабые стороны, УТП, рекомендации, резюме + 7 флористических скорингов (`design_score`, `bouquet_design_score`, `animation_potential`, `freshness_guarantee_score`, `delivery_clarity_score`, `promo_offer_strength`, `price_segment`)
+- **Анализ изображений** — два режима: `site` (скриншот сайта) и `bouquet` (карточка букета: композиция, сорта, гармония цвета, виральность)
+- **Парсинг сайтов** — рендеринг через headless-браузер, извлечение title/h1/абзаца + скриншот + AI-анализ (поп-апы закрываются по ESC)
+- **Анализ отзывов** — тональность −1..1, похвалы/жалобы, доля жалоб на доставку и свежесть
+- **Сравнение** — матрица по критериям с подсветкой лидера (у цен побеждает минимум) + радар-диаграмма + вывод
+- **Конкуренты** — привязка каждого анализа к магазину, данные копятся в `data/competitors.json`
 
 ## 🚀 Быстрый старт
 
-### 1. Клонирование и установка зависимостей
-
 ```bash
-# Клонируйте репозиторий
-cd competitor-monitor
+# 1. Переменные окружения
+cp .env.example .env
+# впишите PROXYAPI_KEY (https://proxyapi.ru/ / routerai)
 
-# Создайте виртуальное окружение
-python -m venv venv
+# 2. Не с чистого листа (опционально): стартовый набор конкурентов
+cp examples/competitors.example.json data/competitors.json
 
-# Активируйте окружение
-# Windows:
-venv\Scripts\activate
-# Linux/Mac:
-source venv/bin/activate
+# 3. Старт
+touch history.json  # если файла нет
+sudo docker compose up --build -d
 
-# Установите зависимости
-pip install -r requirements.txt
+# 4. Проверка
+curl localhost:8000/health
+curl localhost:8000/competitors
 ```
 
-### 2. Настройка переменных окружения
+- Веб-интерфейс: http://localhost:8000 (порт наружу — только на `HOST_DOMAIN`, по умолчанию `127.0.0.1`; задается в `.env`)
+- Админка браузера: http://127.0.0.1:3000 (только локально)
+- Swagger: http://localhost:8000/docs
 
-Создайте файл `.env` в корне проекта (используйте `env.example.txt` как шаблон):
 
-```env
-OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_MODEL=gpt-4o-mini
-OPENAI_VISION_MODEL=gpt-4o-mini
-```
+## ⚙️ Переменные окружения
 
-### 3. Запуск приложения
+| Переменная | Назначение | По умолчанию |
+|---|---|---|
+| `PROXYAPI_KEY` | Ключ OpenAI-совместимого API | — |
+| `PROXYAPI_BASE_URL` | Базовый URL API | — |
+| `PROXYAPI_CHAT_MODEL` | Текстовая модель | `gpt-4o-mini` |
+| `PROXYAPI_VL_MODEL` | Vision-модель | `gpt-4o-mini` |
+| `HOST_DOMAIN` | Куда биндить 8000 наружу | `127.0.0.1` |
+| `BROWSERLESS_URL` / `BROWSERLESS_TOKEN` | Браузерный сервис (задает compose) | `http://browser:3000` |
 
-```bash
-# Запуск сервера
-python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-```
 
-Приложение будет доступно по адресу: http://localhost:8000
-
-## 📁 Структура проекта
+## 📁 Структура
 
 ```
-competitor-monitor/
 ├── backend/
-│   ├── __init__.py
-│   ├── main.py              # FastAPI приложение
-│   ├── config.py            # Конфигурация
-│   ├── models/
-│   │   ├── __init__.py
-│   │   └── schemas.py       # Pydantic модели
+│   ├── main.py              # FastAPI: analyze_text/image/reviews, parse_demo, compare, competitors
+│   ├── config.py            # Настройки (корень через find_dotenv, fail-fast)
+│   ├── models/schemas.py    # Pydantic-схемы цветочной ниши
 │   └── services/
-│       ├── __init__.py
-│       ├── openai_service.py    # Работа с OpenAI API
-│       ├── parser_service.py    # Парсинг веб-страниц
-│       └── history_service.py   # Управление историей
-├── frontend/
-│   ├── index.html           # HTML страница
-│   ├── styles.css           # Стили
-│   └── app.js               # JavaScript логика
-├── requirements.txt         # Зависимости Python
-├── env.example.txt          # Пример .env файла
-├── history.json             # Файл истории (создаётся автоматически)
-├── README.md                # Этот файл
-└── docs.md                  # Документация API
+│       ├── openai_service.py       # Промпты «флорист-маркетолог», JSON-парсинг
+│       ├── parser_service.py       # Browserless REST (/function: goto+ESC+html+скриншот)
+│       ├── history_service.py      # Журнал последних 10 (history.json)
+│       └── competitors_service.py  # data/competitors.json (вложенный latest)
+├── frontend/                # Vanilla JS + Chart.js (радар)
+├── desktop/                 # PyQt6-клиент
+├── examples/                # Статика кейса:
+│   ├── competitors/         # Досье 4 магазинов + competitors_urls.txt
+│   ├── screenshots/         # 4 главных + 12 карточек букетов + manifest.csv
+│   ├── prices_comparison.*   # Границы цен титульных
+│   └── competitors.example.json  # Стартовый набор для data/competitors.json
+├── data/                    # Только runtime (монтируется): competitors.json
+└── Dockerfile / docker-compose.yml  # backend + browserless/chromium (256m, CONCURRENT=1)
 ```
 
-## 🔧 Функциональность
+## 🔧 Эндпоинты
 
-### Анализ текста (`/analyze_text`)
-- Принимает текст конкурента (минимум 10 символов)
-- Возвращает:
-  - Сильные стороны
-  - Слабые стороны
-  - Уникальные предложения
-  - Рекомендации по улучшению
-  - Общее резюме
-
-### Анализ изображений (`/analyze_image`)
-- Принимает изображения: PNG, JPG, GIF, WEBP
-- Возвращает:
-  - Описание изображения
-  - Маркетинговые инсайты
-  - Оценку визуального стиля (0-10)
-  - Рекомендации
-
-### Парсинг сайтов (`/parse_demo`)
-- Принимает URL сайта
-- Извлекает: title, h1, первый абзац
-- Автоматически анализирует извлечённый контент
-
-### История (`/history`)
-- Хранит последние 10 запросов
-- Сохраняет тип запроса, краткое описание, время
+| Метод | Путь | Описание |
+|---|---|---|
+| `GET` | `/` | Веб-интерфейс |
+| `POST` | `/analyze_text` | `{text, shop}` — анализ досье |
+| `POST` | `/analyze_image?mode=site\|bouquet&shop=` | Анализ скриншота / карточки букета |
+| `POST` | `/parse_demo` | `{url, shop}` — парсинг + анализ сайта |
+| `POST` | `/analyze_reviews` | `{text, shop, source, rating?}` — анализ отзывов |
+| `POST` | `/compare` | `{shop_ids[]}` — сравнение конкурентов |
+| `GET/POST` | `/competitors` | Список / добавление конкурентов |
+| `PUT/DELETE` | `/competitors/{id}` | Правка / удаление конкурентов |
+| `GET` | `/competitors/full` | Профили + все анализы |
+| `GET/DELETE` | `/history` | Журнал последних 10 действий |
 
 ## 🛠️ Технологии
 
-- **Backend**: FastAPI, Python 3.9+
-- **AI**: OpenAI GPT-4o-mini (или GPT-4.1)
-- **Frontend**: Vanilla JS, CSS3
-- **Парсинг**: BeautifulSoup4, httpx
-- **Валидация**: Pydantic
-
-## 📖 API Документация
-
-После запуска сервера доступна интерактивная документация:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-
-Подробная документация API в файле [docs.md](docs.md)
+- **Backend**: FastAPI, Pydantic, Python 3.10
+- **AI**: OpenAI-совместимый API (текст + vision), строгий JSON
+- **Парсинг**: Browserless REST (headless Chromium в отдельном контейнере, Selenium-протокол не используется)
+- **Frontend**: Vanilla JS, CSS, Chart.js (радар)
+- **Хранение**: `history.json` (журнал) + `data/competitors.json` (привязки)
 
 ## ⚠️ Требования
 
-- Python 3.9+
-- OpenAI API ключ с доступом к GPT-4o-mini или GPT-4.1
-- Интернет-соединение для работы AI и парсинга
+- Docker + Docker Compose (пользователь в группе `docker`)
+- ~1.5 GB свободной RAM (браузер: `shm 256m`, `CONCURRENT=1`)
+- API-ключ с текстовой и vision-моделью
+- Интернет для AI и парсинга
 
 ## 📝 Лицензия
 
 MIT License
-

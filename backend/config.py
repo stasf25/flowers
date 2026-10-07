@@ -4,10 +4,12 @@
 import os
 import logging
 import sys
+from pathlib import Path
 from pydantic_settings import BaseSettings
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
-load_dotenv()
+_PROJECT_ROOT = Path(os.path.dirname(find_dotenv(".env", raise_error_if_not_found=True))).resolve()
+load_dotenv(dotenv_path=_PROJECT_ROOT / ".env")
 
 # === Настройка логирования ===
 def setup_logging():
@@ -41,27 +43,39 @@ logger = setup_logging()
 
 class Settings(BaseSettings):
     """Настройки приложения"""
-    
+
+    # Корневая директория проекта (папка, где лежат backend/, frontend/, .env)
+    # Поиск вверх от файла-вызывателя, падает быстро при отсутствии .env.
+    project_root: str = str(_PROJECT_ROOT)
+     
     # ProxyAPI (OpenAI-совместимый)
-    proxy_api_key: str = os.getenv("PROXY_API_KEY", "")
-    proxy_api_base_url: str = "https://api.proxyapi.ru/openai/v1"
-    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-    openai_vision_model: str = os.getenv("OPENAI_VISION_MODEL", "gpt-4o-mini")
+    proxy_api_key: str = os.getenv("PROXYAPI_KEY", os.getenv("OPENAI_API_KEY", ""))
+    proxy_api_base_url: str = os.getenv("PROXYAPI_BASE_URL", "")
+    openai_model: str = os.getenv("PROXYAPI_CHAT_MODEL", "gpt-4o-mini")
+    openai_vision_model: str = os.getenv("PROXYAPI_VL_MODEL", "gpt-4o-mini")
     
     # API
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     
+    # Файл с результатами анализов
+    store_file: str = str(_PROJECT_ROOT / "data" / "competitors.json")
+    
     # История
-    history_file: str = "history.json"
+    history_file: str = str(_PROJECT_ROOT / "data" / "history.json")
     max_history_items: int = 10
     
     # Парсер
     parser_timeout: int = 10
     parser_user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    selenium_remote_url: str = os.getenv("SELENIUM_REMOTE_URL", "")
+    # Browserless REST (ghcr.io/browserless/chromium): базовый URL без /webdriver,
+    # напр. http://browser:3000. Selenium-протокол v2-образ НЕ поддерживает.
+    browserless_url: str = os.getenv("BROWSERLESS_URL", "")
+    browserless_token: str = os.getenv("BROWSERLESS_TOKEN", "")
     
     class Config:
-        env_file = ".env"
+        env_file = str(_PROJECT_ROOT / ".env")
         extra = "ignore"
 
 

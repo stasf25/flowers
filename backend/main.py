@@ -5,7 +5,8 @@
 import base64
 import time
 import logging
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+import os
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -16,6 +17,15 @@ from backend.models.schemas import (
     TextAnalysisRequest,
     TextAnalysisResponse,
     ImageAnalysisResponse,
+    ReviewsAnalysisRequest,
+    ReviewsAnalysisResponse,
+    CompareRequest,
+    CompareResponse,
+    ComparisonRow,
+    CompetitorCreate,
+    CompetitorProfile,
+    CompetitorUpdate,
+    CompetitorsResponse,
     ParseDemoRequest,
     ParseDemoResponse,
     ParsedContent,
@@ -24,6 +34,7 @@ from backend.models.schemas import (
 from backend.services.openai_service import openai_service
 from backend.services.parser_service import parser_service
 from backend.services.history_service import history_service
+from backend.services.competitors_service import competitors_service
 
 # Логгер для API
 logger = logging.getLogger("competitor_monitor.api")
@@ -107,7 +118,7 @@ async def shutdown_event():
 async def root():
     """Главная страница - отдаём фронтенд"""
     logger.debug("Запрос главной страницы")
-    return FileResponse("frontend/index.html")
+    return FileResponse(os.path.join(settings.project_root, "frontend", "index.html"))
 
 
 @app.post("/analyze_text", response_model=TextAnalysisResponse)
@@ -132,9 +143,13 @@ async def analyze_text(request: TextAnalysisRequest):
         logger.info("  💾 Сохранение в историю...")
         history_service.add_entry(
             request_type="text",
-            request_summary=request.text[:100] + "..." if len(request.text) > 100 else request.text,
+            request_summary=(f"[{request.shop}] " if request.shop else "") + (request.text[:100] + "..." if len(request.text) > 100 else request.text),
             response_summary=analysis.summary
         )
+        # Привязка к конкуренту (вложенный latest)
+        shop_id = competitors_service.resolve_shop(request.shop)
+        if shop_id:
+            competitors_service.save_analysis(shop_id, "text", analysis.model_dump(), {"source": "text"})
         
         logger.info("  ✅ УСПЕХ: Анализ текста завершён")
         logger.info("=" * 50)
@@ -153,12 +168,18 @@ async def analyze_text(request: TextAnalysisRequest):
 
 
 @app.post("/analyze_image", response_model=ImageAnalysisResponse)
-async def analyze_image(file: UploadFile = File(...)):
+async def analyze_image(
+    file: UploadFile = File(...),
+    mode: str = Query("site", description="site: скриншот сайта, bouquet: карточка букета"),
+    shop: str = Query("", description="Конкурент (выбор или свое название)"),
+):
     """
-    Анализ изображения конкурента
+    Анализ изображения конкурента (mode=site|bouquet)
     """
+    if mode not in ("site", "bouquet"):
+        raise HTTPException(status_code=400, detail="mode должен быть site или bouquet")
     logger.info("=" * 50)
-    logger.info("🖼️ API: АНАЛИЗ ИЗОБРАЖЕНИЯ")
+    logger.info(f"🖼️ API: АНАЛИЗ ИЗОБРАЖЕНИЯ (mode={mode})")
     logger.info(f"  Имя файла: {file.filename}")
     logger.info(f"  Тип: {file.content_type}")
     
@@ -188,19 +209,24 @@ async def analyze_image(file: UploadFile = File(...)):
         logger.info("  🔍 Отправка на анализ...")
         analysis = await openai_service.analyze_image(
             image_base64=image_base64,
-            mime_type=file.content_type
+            mime_type=file.content_type,
+            mode=mode
         )
-        
+
         elapsed = time.time() - start_time
         logger.info(f"  ✓ Анализ завершён за {elapsed:.2f} сек")
-        
+
         # Сохраняем в историю
+        entity = "bouquet" if mode == "bouquet" else "image"
         logger.info("  💾 Сохранение в историю...")
         history_service.add_entry(
-            request_type="image",
-            request_summary=f"Изображение: {file.filename}",
+            request_type=entity,
+            request_summary=(f"[{shop}] " if shop else "") + f"Изображение ({mode}): {file.filename}",
             response_summary=analysis.description[:200] if analysis.description else "Анализ изображения"
         )
+        shop_id = competitors_service.resolve_shop(shop)
+        if shop_id:
+            competitors_service.save_analysis(shop_id, entity, analysis.model_dump(), {"mode": mode, "filename": file.filename})
         
         logger.info("  ✅ УСПЕХ: Анализ изображения завершён")
         logger.info("=" * 50)
@@ -287,9 +313,12 @@ async def parse_demo(request: ParseDemoRequest):
         logger.info("  💾 Сохранение в историю...")
         history_service.add_entry(
             request_type="parse",
-            request_summary=f"URL: {request.url}",
+            request_summary=(f"[{request.shop}] " if request.shop else "") + f"URL: {request.url}",
             response_summary=analysis.summary[:100] if analysis.summary else f"Title: {title or 'N/A'}"
         )
+        shop_id = competitors_service.resolve_shop(request.shop, url=request.url)
+        if shop_id:
+            competitors_service.save_analysis(shop_id, "site", analysis.model_dump(), {"url": request.url})
         
         total_elapsed = time.time() - total_start
         logger.info(f"  ✅ УСПЕХ: Парсинг и анализ завершён за {total_elapsed:.2f} сек")
@@ -335,6 +364,135 @@ async def clear_history():
     return {"success": True, "message": "История очищена"}
 
 
+@app.get("/competitors", response_model=CompetitorsResponse)
+async def get_competitors():
+    """Список конкурентов (профили из data/competitors.json)"""
+    items = competitors_service.list_profiles()
+    return CompetitorsResponse(items=items, total=len(items))
+
+
+@app.post("/competitors", response_model=CompetitorProfile, status_code=201)
+async def add_competitor(request: CompetitorCreate):
+    """Добавить конкурента вручную (id опционален)"""
+    try:
+        return competitors_service.add_profile(
+            name=request.name, shop_id=request.id, url=request.url,
+            price_min=request.price_min, price_max=request.price_max,
+        )
+    except KeyError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.put("/competitors/{shop_id}", response_model=CompetitorProfile)
+async def update_competitor(shop_id: str, request: CompetitorUpdate):
+    """Редактировать конкурента (id неизменен)"""
+    try:
+        return competitors_service.update_profile(
+            shop_id, name=request.name, url=request.url,
+            price_min=request.price_min, price_max=request.price_max,
+        )
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/competitors/{shop_id}")
+async def delete_competitor(shop_id: str):
+    """Удалить конкурента вместе с анализами"""
+    try:
+        competitors_service.delete_profile(shop_id)
+        return {"success": True, "message": f"Конкурент {shop_id} удален"}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.get("/competitors/full")
+async def get_competitors_full():
+    """Полное содержимое competitors.json (профили + анализы) для вкладки Конкуренты"""
+    return competitors_service.get_for_compare([s.id for s in competitors_service.list_profiles()])
+
+
+@app.post("/analyze_reviews", response_model=ReviewsAnalysisResponse)
+async def analyze_reviews(request: ReviewsAnalysisRequest):
+    """Анализ отзывов о конкуренте (вставленный текст)"""
+    logger.info("=" * 50)
+    logger.info("⭐ API: АНАЛИЗ ОТЗЫВОВ")
+    try:
+        analysis = await openai_service.analyze_reviews(request.text, shop=request.shop, source=request.source)
+        history_service.add_entry(
+            request_type="reviews",
+            request_summary=(f"[{request.shop}] " if request.shop else "") + f"Отзывы ({request.source or 'н/д'}): {request.text[:80]}...",
+            response_summary=analysis.summary[:200] if analysis.summary else f"sentiment={analysis.sentiment}",
+        )
+        shop_id = competitors_service.resolve_shop(request.shop)
+        if shop_id:
+            competitors_service.save_analysis(shop_id, "reviews", analysis.model_dump(), {"source": request.source})
+        logger.info("  ✅ УСПЕХ: Анализ отзывов завершён")
+        logger.info("=" * 50)
+        return ReviewsAnalysisResponse(success=True, analysis=analysis)
+    except Exception as e:
+        logger.error(f"  ❌ ОШИБКА: {e}")
+        logger.error("=" * 50)
+        return ReviewsAnalysisResponse(success=False, error=str(e))
+
+
+@app.post("/compare", response_model=CompareResponse)
+async def compare(request: CompareRequest):
+    """Сопоставление конкурентов: матрица + overall_summary"""
+    logger.info("=" * 50)
+    logger.info(f"📊 API: СРАВНЕНИЕ {request.shop_ids}")
+    try:
+        shops = competitors_service.get_for_compare(request.shop_ids)
+        if len(shops) < 2:
+            return CompareResponse(success=False, error="Нужно минимум 2 конкурента с данными. Сначала привяжите анализы к конкурентам.")
+        payload = []
+        for sid, s in shops.items():
+            a = s.get("analyses", {})
+            # Берем свежие скоринги: приоритет site -> text; букеты усредняем
+            base = a.get("site") or a.get("text") or {}
+            scores = dict((base.get("result") or {}))
+            bouquets = a.get("bouquets", [])
+            if bouquets:
+                for c in ("bouquet_design_score", "color_harmony_score", "instagrammability_score"):
+                    vals = [b["result"].get(c, 0) for b in bouquets if b.get("result", {}).get(c)]
+                    if vals:
+                        scores[c] = round(sum(vals) / len(vals))
+            payload.append({
+                "id": sid, "name": s.get("name", sid),
+                "scores": scores,
+                "price_min": s.get("price_min"), "price_max": s.get("price_max"),
+                "summary": (base.get("result") or {}).get("summary", ""),
+            })
+        result = await openai_service.compare_shops(payload)
+        rows = []
+        # Направление критериев: цена — чем меньше, тем лучше; скоры — наоборот.
+        # LLM winner для цен ставит по максимуму — пересчитываем детерминированно.
+        lower_is_better = {"price_min", "price_max"}
+        for r in result.get("matrix", []):
+            values = r.get("values", {}) or {}
+            winner = r.get("winner")
+            crit = str(r.get("criterion", ""))
+            if crit in lower_is_better:
+                nums = {k: v for k, v in values.items() if isinstance(v, (int, float))}
+                winner = min(nums, key=lambda k: nums[k]) if nums else None
+            rows.append(ComparisonRow(criterion=crit, values=values, winner=winner))
+        history_service.add_entry(
+            request_type="compare",
+            request_summary=f"Сравнение: {', '.join(request.shop_ids)}",
+            response_summary=result.get("overall_summary", "")[:200],
+        )
+        logger.info("  ✅ УСПЕХ: Сравнение готово")
+        logger.info("=" * 50)
+        return CompareResponse(success=True, competitors=request.shop_ids, matrix=rows, overall_summary=result.get("overall_summary", ""))
+    except Exception as e:
+        logger.error(f"  ❌ ОШИБКА: {e}")
+        logger.error("=" * 50)
+        return CompareResponse(success=False, error=str(e))
+
+
 @app.get("/health")
 async def health_check():
     """Проверка работоспособности сервиса"""
@@ -346,9 +504,9 @@ async def health_check():
     }
 
 
-# Статические файлы для фронтенда
-app.mount("/static", StaticFiles(directory="frontend"), name="static")
-logger.info("Статические файлы подключены: /static -> frontend/")
+# Статические файлы для фронтенда (абсолютный путь от корня проекта, не зависит от cwd)
+app.mount("/static", StaticFiles(directory=os.path.join(settings.project_root, "frontend")), name="static")
+logger.info(f"Статические файлы подключены: /static -> {os.path.join(settings.project_root, 'frontend/')}")
 
 
 if __name__ == "__main__":

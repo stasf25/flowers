@@ -1,0 +1,12 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.git/
+.opencode/
+.playwright-mcp/
+data/
+examples/
+dist/
+build/
+*.exe

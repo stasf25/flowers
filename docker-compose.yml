@@ -1,0 +1,37 @@
+services:
+  backend:
+    build: .
+    ports:
+      # наружу — только на HOST_DOMAIN (по умолчанию 127.0.0.1, если в .env нет)
+      - "${HOST_DOMAIN:-127.0.0.1}:8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Browserless v2 НЕ говорит по Selenium-протоколу (/webdriver -> 404),
+      # backend ходит в него через REST: POST /function (goto+ESC+html+скриншот)
+      - BROWSERLESS_URL=http://browser:3000
+      # - BROWSERLESS_TOKEN=... # если задашь TOKEN у browser-сервиса, продублируй сюда
+    volumes:
+      # история переживает пересборку
+      #- ./history.json:/app/history.json
+      # весь runtime-каталог: внутри только competitors.json и history.json.
+      # Статика (досье, скриншоты, прайсы) живет в examples/ и в образ не едет.
+      # Не с чистого листа: cp examples/competitors.example.json data/competitors.json
+      - ./data:/app/data
+    depends_on:
+      - browser
+    restart: unless-stopped
+
+  browser:
+    # Вариант 4: browserless chromium (Selenium + Playwright + REST)
+    image: ghcr.io/browserless/chromium:latest
+    ports:
+      # админка/отладчик — только локально
+      - "127.0.0.1:3000:3000"
+    shm_size: 256m
+    mem_limit: 1g
+    environment:
+      - CONCURRENT=1
+      - QUEUED=1
+      - TIMEOUT=30000
+    restart: unless-stopped

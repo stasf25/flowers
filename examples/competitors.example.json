@@ -1,0 +1,32 @@
+{
+  "shops": {
+    "vesnaflowers": {
+      "id": "vesnaflowers",
+      "name": "ВеснаFlowers",
+      "url": "https://vesnaflowers.ru",
+      "price_min": 6000,
+      "price_max": 18000
+    },
+    "flor2u": {
+      "id": "flor2u",
+      "name": "Flor2u",
+      "url": "https://flor2u.ru",
+      "price_min": 2500,
+      "price_max": 8000
+    },
+    "florist_ru": {
+      "id": "florist_ru",
+      "name": "Флорист.ру",
+      "url": "https://www.florist.ru",
+      "price_min": 3000,
+      "price_max": 21500
+    },
+    "rus_buket": {
+      "id": "rus_buket",
+      "name": "Русский букет",
+      "url": "https://rus-buket.ru",
+      "price_min": 3000,
+      "price_max": 18000
+    }
+  }
+}

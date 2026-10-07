@@ -25,6 +25,15 @@
             </div>
             
             <nav class="nav">
+                <button class="nav-btn" data-tab="competitors">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                    Конкуренты
+                </button>
                 <button class="nav-btn active" data-tab="text">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -57,6 +66,20 @@
                     </svg>
                     История
                 </button>
+                <button class="nav-btn" data-tab="reviews">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                    </svg>
+                    Отзывы
+                </button>
+                <button class="nav-btn" data-tab="compare">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="20" x2="18" y2="10"/>
+                        <line x1="12" y1="20" x2="12" y2="4"/>
+                        <line x1="6" y1="20" x2="6" y2="14"/>
+                    </svg>
+                    Сравнить
+                </button>
             </nav>
             
             <div class="sidebar-footer">
@@ -84,6 +107,10 @@
                         </div>
                         <div class="card-body">
                             <div class="form-group">
+                                <label for="text-shop">Конкурент *</label>
+                                <select id="text-shop"><option value="">— выберите конкурента —</option></select>
+                            </div>
+                            <div class="form-group">
                                 <label for="competitor-text">Текст для анализа</label>
                                 <textarea 
                                     id="competitor-text" 
@@ -109,6 +136,17 @@
                             <p>Загрузите скриншот сайта, баннер или фото упаковки конкурента</p>
                         </div>
                         <div class="card-body">
+                            <div class="form-group">
+                                <label for="image-shop">Конкурент *</label>
+                                <select id="image-shop"><option value="">— выберите конкурента —</option></select>
+                            </div>
+                            <div class="form-group">
+                                <label>Что анализируем?</label>
+                                <div>
+                                    <label><input type="radio" name="image-mode" value="site" checked> Скриншот сайта</label>
+                                    <label><input type="radio" name="image-mode" value="bouquet"> Карточка букета</label>
+                                </div>
+                            </div>
                             <div class="upload-zone" id="upload-zone">
                                 <input type="file" id="image-input" accept="image/*" hidden>
                                 <div class="upload-content">
@@ -144,6 +182,10 @@
                         </div>
                         <div class="card-body">
                             <div class="form-group">
+                                <label for="parse-shop">Конкурент *</label>
+                                <select id="parse-shop"><option value="">— выберите конкурента —</option></select>
+                            </div>
+                            <div class="form-group">
                                 <label for="url-input">URL сайта</label>
                                 <div class="input-group">
                                     <span class="input-prefix">https://</span>
@@ -160,6 +202,99 @@
                                 </svg>
                                 Парсить и анализировать
                             </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Reviews Tab -->
+                <section class="tab-content" id="reviews-tab">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>Анализ отзывов</h2>
+                            <p>Вставьте отзывы о конкуренте — AI оценит тональность и жалобы</p>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label for="reviews-shop">Конкурент *</label>
+                                <select id="reviews-shop"><option value="">— выберите конкурента —</option></select>
+                            </div>
+                            <div class="form-group">
+                                <label for="reviews-source">Источник отзывов</label>
+                                <input type="text" id="reviews-source" placeholder="Напр. Яндекс.Карты">
+                            </div>
+                            <div class="form-group">
+                                <label for="reviews-text">Текст отзывов</label>
+                                <textarea id="reviews-text" rows="8" placeholder="Вставьте несколько отзывов..."></textarea>
+                            </div>
+                            <button class="btn btn-primary" id="analyze-reviews-btn">
+                                Проанализировать отзывы
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Compare Tab -->
+                <section class="tab-content" id="compare-tab">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>Сравнение конкурентов</h2>
+                            <p>Отметьте галками 2+ конкурентов с привязанными анализами</p>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group" id="compare-list"></div>
+                            <button class="btn btn-primary" id="compare-btn">
+                                Сравнить
+                            </button>
+                            <div id="compare-results" hidden>
+                                <div class="result-block" id="radar-card">
+                                    <h3>Радар-диаграмма</h3>
+                                    <div class="radar-wrap"><canvas id="radar-chart"></canvas></div>
+                                </div>
+                                <div id="compare-matrix"></div>
+                                <div id="compare-summary"></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Competitors Tab -->
+                <section class="tab-content" id="competitors-tab">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>Конкуренты</h2>
+                            <p>Список из competitors.json — раскройте для просмотра анализов</p>
+                        </div>
+                        <div class="card-body">
+                            <h3>Добавить / редактировать</h3>
+                            <div class="form-group">
+                                <label for="shop-edit-select">Конкурент (выберите для редактирования или введите нового ниже)</label>
+                                <select id="shop-edit-select"><option value="">— новый конкурент —</option></select>
+                            </div>
+                            <div class="form-group">
+                                <label for="new-shop-id">ID (пусто = из названия; при редактировании неизменен)</label>
+                                <input type="text" id="new-shop-id" placeholder="напр. my_shop">
+                            </div>
+                            <div class="form-group">
+                                <label for="new-shop-name">Название *</label>
+                                <input type="text" id="new-shop-name" placeholder="Напр. Мой магазин">
+                            </div>
+                            <div class="form-group">
+                                <label for="new-shop-url">Сайт</label>
+                                <input type="text" id="new-shop-url" placeholder="https://example.com">
+                            </div>
+                            <div class="form-group">
+                                <label for="new-shop-min">Цена от, ₽</label>
+                                <input type="number" id="new-shop-min" min="0" placeholder="2500">
+                            </div>
+                            <div class="form-group">
+                                <label for="new-shop-max">Цена до, ₽</label>
+                                <input type="number" id="new-shop-max" min="0" placeholder="8000">
+                            </div>
+                            <button class="btn btn-primary" id="add-shop-btn">Сохранить</button>
+                            <button class="btn btn-secondary" id="delete-shop-btn">Удалить</button>
+                            <hr>
+                            <h3>Загруженные анализы</h3>
+                            <div id="competitors-list"></div>
                         </div>
                     </div>
                 </section>
@@ -227,6 +362,7 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="/static/app.js"></script>
 </body>
 </html>
