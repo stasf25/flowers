@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=CompetitorMonitor
+Comment=AI-ассистент для анализа конкурентов
+Exec=CompetitorMonitor
+Icon=competitor-monitor
+Categories=Utility;
+Terminal=false
